@@ -106,6 +106,7 @@
       <div class="data-head">
         <h2 id="dataHeading">Your records</h2>
         <div class="head-actions">
+          <button type="button" class="ghost" id="refreshBtn">Refresh</button>
           <button type="button" id="saveBtn">Save changes</button>
           <button type="button" class="ghost" id="logoutBtn">Sign out</button>
         </div>
@@ -143,6 +144,7 @@
     let sheetName = "Sheet1";
     let songKey = null;   // detected name of the Song column
     let ghToken = "";     // pasted at runtime, memory only
+    let currentUser = ""; // who's logged in, for Refresh
 
     const $ = id => document.getElementById(id);
     const card=$("card"), loginView=$("loginView"), dataView=$("dataView"), form=$("loginForm"),
@@ -155,6 +157,7 @@
       e.preventDefault();
       const u = $("username").value.trim(), p = $("password").value;
       if (USERS[u] !== undefined && USERS[u] === p) {
+        currentUser = u;
         whoami.textContent = u;
         loginView.classList.remove("active");
         dataView.classList.add("active");
@@ -173,17 +176,17 @@
       statusEl.style.display=""; statusEl.className="status"; statusEl.textContent="Loading\u2026";
       saveMsg.textContent=""; saveMsg.className="save-msg"; editHint.style.display="none";
       tokenPanel.classList.remove("show");
-      allRows=[]; songKey=null;
+      allRows=[]; songKey=null; currentUser="";
       loginView.classList.add("active"); $("username").focus();
     });
+
+    $("refreshBtn").addEventListener("click", ()=>{ if(currentUser) loadData(currentUser); });
 
     async function loadData(username){
       statusEl.className="status"; statusEl.style.display=""; statusEl.textContent="Loading\u2026";
       tableWrap.style.display="none"; tableWrap.innerHTML=""; saveMsg.textContent="";
       try{
-        const resp = await fetch(DATA_FILE, { cache:"no-store" });
-        if(!resp.ok) throw new Error("HTTP "+resp.status);
-        const wb = XLSX.read(await resp.arrayBuffer(), { type:"array", cellDates:true });
+        const wb = XLSX.read(await fetchFreshData(), { type:"array", cellDates:true });
         sheetName = wb.SheetNames[0];
         allRows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval:"" });
         if(!allRows.length){ showStatus("The spreadsheet is empty."); return; }
@@ -203,6 +206,21 @@
       }catch(err){
         showStatus("Couldn't load "+DATA_FILE+" ("+err.message+"). Make sure it sits next to index.html.", true);
       }
+    }
+
+    // Always read the freshest copy straight from the repo. This bypasses the
+    // GitHub Pages build delay, and the timestamp defeats CDN/browser caching,
+    // so a reload (or Refresh) always shows the latest committed data.
+    async function fetchFreshData(){
+      const bust = "?t=" + Date.now();
+      const rawUrl = "https://raw.githubusercontent.com/"+GH.owner+"/"+GH.repo+"/"+GH.branch+"/"+GH.path+bust;
+      try{
+        const r = await fetch(rawUrl, { cache:"no-store" });
+        if(r.ok) return await r.arrayBuffer();
+      }catch(e){ /* fall through to the Pages-served copy */ }
+      const r2 = await fetch(DATA_FILE + bust, { cache:"no-store" });
+      if(!r2.ok) throw new Error("HTTP "+r2.status);
+      return await r2.arrayBuffer();
     }
 
     function showStatus(msg,isErr){
