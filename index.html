@@ -182,11 +182,11 @@
 
     $("refreshBtn").addEventListener("click", ()=>{ if(currentUser) loadData(currentUser); });
 
-    async function loadData(username){
+    async function loadData(username, shaHint){
       statusEl.className="status"; statusEl.style.display=""; statusEl.textContent="Loading\u2026";
       tableWrap.style.display="none"; tableWrap.innerHTML=""; saveMsg.textContent="";
       try{
-        const wb = XLSX.read(await fetchFreshData(), { type:"array", cellDates:true });
+        const wb = XLSX.read(await fetchFreshData(shaHint), { type:"array", cellDates:true });
         sheetName = wb.SheetNames[0];
         allRows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval:"" });
         if(!allRows.length){ showStatus("The spreadsheet is empty."); return; }
@@ -208,27 +208,48 @@
       }
     }
 
-    // Read the file from the GitHub Contents API: the repo's source of truth.
-    // No CDN, no Pages build delay, not served from cache -> a save is visible
-    // on the very next load/Refresh. (Public repo: works without a token, ~60
-    // reads/hr per IP; once you've pasted a token it's used here too, ~5000/hr.)
-    async function fetchFreshData(){
-      const api = "https://api.github.com/repos/"+GH.owner+"/"+GH.repo+"/contents/"+GH.path
-                  + "?ref=" + GH.branch + "&t=" + Date.now();
-      const headers = { "Accept":"application/vnd.github.v3+json" };
-      if(ghToken) headers["Authorization"] = "Bearer " + ghToken;
-      const r = await fetch(api, { headers, cache:"no-store" });
+    function ghHeaders(){
+      const h = { "Accept":"application/vnd.github.v3+json" };
+      if(ghToken) h["Authorization"] = "Bearer " + ghToken;
+      return h;
+    }
+
+    // The branch HEAD commit SHA. This pointer updates instantly on commit and
+    // is not subject to the content cache that was serving you stale data.
+    async function latestCommitSha(){
+      const url = "https://api.github.com/repos/"+GH.owner+"/"+GH.repo+"/git/refs/heads/"+GH.branch+"?t="+Date.now();
+      const r = await fetch(url, { headers:ghHeaders(), cache:"no-store" });
       if(!r.ok){
         const extra = r.status===403 ? " (rate limit \u2014 paste a token and Save once, then it's used for reads too)" : "";
         throw new Error("GitHub API HTTP " + r.status + extra);
       }
-      const meta = await r.json();
-      if(meta.content) return b64ToBuffer(meta.content);
-      // Files >1MB return no inline content; pull the blob directly instead.
-      const sep = meta.download_url.includes("?") ? "&" : "?";
-      const r2 = await fetch(meta.download_url + sep + "t=" + Date.now(), { cache:"no-store" });
+      return (await r.json()).object.sha;
+    }
+
+    // Last-resort reader via the Contents API (can be a few minutes stale on reads).
+    async function contentsApiBytes(){
+      const url = "https://api.github.com/repos/"+GH.owner+"/"+GH.repo+"/contents/"+GH.path+"?ref="+GH.branch+"&t="+Date.now();
+      const r = await fetch(url, { headers:ghHeaders(), cache:"no-store" });
+      if(!r.ok) throw new Error("GitHub API HTTP " + r.status);
+      const j = await r.json();
+      if(j.content) return b64ToBuffer(j.content);
+      const sep = j.download_url.includes("?") ? "&" : "?";
+      const r2 = await fetch(j.download_url + sep + "t=" + Date.now(), { cache:"no-store" });
       if(!r2.ok) throw new Error("download HTTP " + r2.status);
       return await r2.arrayBuffer();
+    }
+
+    // Read pinned to an immutable commit SHA, so the bytes can never be a stale
+    // cached copy. shaHint (from a just-made save) skips the HEAD lookup.
+    async function fetchFreshData(shaHint){
+      let sha;
+      try { sha = shaHint || await latestCommitSha(); }
+      catch(e){ return await contentsApiBytes(); }
+      const rawUrl = "https://raw.githubusercontent.com/"+GH.owner+"/"+GH.repo+"/"+sha+"/"+GH.path;
+      const r = await fetch(rawUrl, { cache:"no-store" });
+      if(r.ok) return await r.arrayBuffer();
+      // Brand-new commit not yet on raw, or a private repo: fall back to the API.
+      return await contentsApiBytes();
     }
 
     function b64ToBuffer(b64){
@@ -307,8 +328,10 @@
           const body = await putResp.text();
           throw new Error("HTTP "+putResp.status+" "+body.slice(0,140));
         }
-        // Re-pull from the repo so the saved values appear right here, proving it landed.
-        await loadData(currentUser);
+        // Pin the reload to the commit we just created so it cannot read a stale cache.
+        const putJson = await putResp.json();
+        const newSha = putJson && putJson.commit && putJson.commit.sha;
+        await loadData(currentUser, newSha);
         setSave("Saved to "+GH.owner+"/"+GH.repo+" and reloaded from the repo \u2713", "ok");
       }catch(err){
         setSave("Save failed: "+err.message, "err");
