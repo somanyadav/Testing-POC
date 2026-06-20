@@ -208,19 +208,34 @@
       }
     }
 
-    // Always read the freshest copy straight from the repo. This bypasses the
-    // GitHub Pages build delay, and the timestamp defeats CDN/browser caching,
-    // so a reload (or Refresh) always shows the latest committed data.
+    // Read the file from the GitHub Contents API: the repo's source of truth.
+    // No CDN, no Pages build delay, not served from cache -> a save is visible
+    // on the very next load/Refresh. (Public repo: works without a token, ~60
+    // reads/hr per IP; once you've pasted a token it's used here too, ~5000/hr.)
     async function fetchFreshData(){
-      const bust = "?t=" + Date.now();
-      const rawUrl = "https://raw.githubusercontent.com/"+GH.owner+"/"+GH.repo+"/"+GH.branch+"/"+GH.path+bust;
-      try{
-        const r = await fetch(rawUrl, { cache:"no-store" });
-        if(r.ok) return await r.arrayBuffer();
-      }catch(e){ /* fall through to the Pages-served copy */ }
-      const r2 = await fetch(DATA_FILE + bust, { cache:"no-store" });
-      if(!r2.ok) throw new Error("HTTP "+r2.status);
+      const api = "https://api.github.com/repos/"+GH.owner+"/"+GH.repo+"/contents/"+GH.path
+                  + "?ref=" + GH.branch + "&t=" + Date.now();
+      const headers = { "Accept":"application/vnd.github.v3+json" };
+      if(ghToken) headers["Authorization"] = "Bearer " + ghToken;
+      const r = await fetch(api, { headers, cache:"no-store" });
+      if(!r.ok){
+        const extra = r.status===403 ? " (rate limit \u2014 paste a token and Save once, then it's used for reads too)" : "";
+        throw new Error("GitHub API HTTP " + r.status + extra);
+      }
+      const meta = await r.json();
+      if(meta.content) return b64ToBuffer(meta.content);
+      // Files >1MB return no inline content; pull the blob directly instead.
+      const sep = meta.download_url.includes("?") ? "&" : "?";
+      const r2 = await fetch(meta.download_url + sep + "t=" + Date.now(), { cache:"no-store" });
+      if(!r2.ok) throw new Error("download HTTP " + r2.status);
       return await r2.arrayBuffer();
+    }
+
+    function b64ToBuffer(b64){
+      const bin = atob(b64.replace(/\s/g, ""));
+      const bytes = new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+      return bytes.buffer;
     }
 
     function showStatus(msg,isErr){
@@ -280,7 +295,7 @@
         const contentB64 = XLSX.write(wb, { bookType:"xlsx", type:"base64" });
 
         const api = "https://api.github.com/repos/"+GH.owner+"/"+GH.repo+"/contents/"+GH.path;
-        const getResp = await fetch(api+"?ref="+GH.branch, { headers:authHeaders() });
+        const getResp = await fetch(api+"?ref="+GH.branch+"&t="+Date.now(), { headers:authHeaders(), cache:"no-store" });
         if(!getResp.ok) throw new Error("read failed HTTP "+getResp.status);
         const sha = (await getResp.json()).sha;
 
@@ -292,7 +307,9 @@
           const body = await putResp.text();
           throw new Error("HTTP "+putResp.status+" "+body.slice(0,140));
         }
-        setSave("Saved to "+GH.owner+"/"+GH.repo+" \u2713  (the live page updates after the next Pages build)", "ok");
+        // Re-pull from the repo so the saved values appear right here, proving it landed.
+        await loadData(currentUser);
+        setSave("Saved to "+GH.owner+"/"+GH.repo+" and reloaded from the repo \u2713", "ok");
       }catch(err){
         setSave("Save failed: "+err.message, "err");
       }finally{
