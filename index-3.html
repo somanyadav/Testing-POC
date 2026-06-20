@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-top: #EEF1F6;
+      --bg-bottom: #E2E7EF;
+      --surface: #FFFFFF;
+      --ink: #141C2B;
+      --muted: #5B6B82;
+      --accent: #2B50E8;
+      --accent-press: #1F3DC4;
+      --line: #D5DCE6;
+      --field: #F6F8FB;
+      --error: #C9352F;
+      --error-bg: #FBEAE9;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      color: var(--ink);
+      background: linear-gradient(160deg, var(--bg-top), var(--bg-bottom));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 380px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-top: 3px solid var(--accent);
+      border-radius: 14px;
+      padding: 36px 32px;
+      box-shadow: 0 18px 40px -22px rgba(20, 28, 43, 0.45);
+    }
+
+    /* View switching */
+    .view { display: none; }
+    .view.active { display: block; animation: rise 0.4s ease both; }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Login view */
+    h1 {
+      font-family: "Space Grotesk", sans-serif;
+      font-weight: 700;
+      font-size: 1.75rem;
+      letter-spacing: -0.01em;
+      margin: 0 0 6px;
+    }
+
+    .subtitle {
+      margin: 0 0 26px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .field { margin-bottom: 18px; }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--muted);
+      margin-bottom: 7px;
+    }
+
+    input {
+      width: 100%;
+      font: inherit;
+      font-size: 0.95rem;
+      color: var(--ink);
+      background: var(--field);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 11px 13px;
+      transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    }
+
+    input:focus {
+      outline: none;
+      background: var(--surface);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(43, 80, 232, 0.16);
+    }
+
+    button {
+      width: 100%;
+      font-family: "Space Grotesk", sans-serif;
+      font-weight: 500;
+      font-size: 0.98rem;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 9px;
+      padding: 12px 16px;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.05s;
+    }
+
+    button:hover { background: var(--accent-press); }
+    button:active { transform: translateY(1px); }
+
+    button:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(43, 80, 232, 0.35);
+    }
+
+    .ghost {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--line);
+    }
+    .ghost:hover { background: var(--field); }
+
+    .error {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: var(--error-bg);
+      color: var(--error);
+      font-size: 0.85rem;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 18px;
+    }
+    .error.show { display: flex; }
+
+    /* Hello view */
+    .signed-as {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin: 0 0 18px;
+    }
+
+    .hello {
+      font-family: "Space Grotesk", sans-serif;
+      font-weight: 700;
+      font-size: 2.6rem;
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      margin: 0 0 14px;
+    }
+
+    .hello-sub {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin: 0 0 28px;
+    }
+
+    .hello-sub strong { color: var(--ink); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .view.active { animation: none; }
+      input, button { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+
+    <!-- LOGIN VIEW -->
+    <section id="loginView" class="view active" aria-labelledby="loginHeading">
+      <h1 id="loginHeading">Sign in</h1>
+      <p class="subtitle">Enter your username and password to continue.</p>
+
+      <form id="loginForm" novalidate>
+        <div class="error" id="errorBox" role="alert">
+          <span aria-hidden="true">&#9888;</span>
+          <span>Incorrect username or password.</span>
+        </div>
+
+        <div class="field">
+          <label for="username">Username</label>
+          <input id="username" name="username" type="text"
+                 autocomplete="username" autocapitalize="none"
+                 spellcheck="false" required />
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password"
+                 autocomplete="current-password" required />
+        </div>
+
+        <button type="submit">Sign in</button>
+      </form>
+    </section>
+
+    <!-- HELLO VIEW -->
+    <section id="helloView" class="view" aria-labelledby="helloHeading" hidden>
+      <p class="signed-as">Signed in</p>
+      <h2 id="helloHeading" class="hello">Hello, world.</h2>
+      <p class="hello-sub">You're logged in as <strong id="whoami">user1</strong>.</p>
+      <button type="button" class="ghost" id="logoutBtn">Sign out</button>
+    </section>
+
+  </main>
+
+  <script>
+    // ── Credentials ──────────────────────────────────────────
+    // Edit these to change who can log in. Note: because this is a
+    // static site, anyone can read these by viewing the page source.
+    // Fine for a demo / light gate — not for protecting real secrets.
+    const USERS = {
+      "user1": "first",
+      "user2": "second",
+      "user3": "third"
+    };
+    // ─────────────────────────────────────────────────────────
+
+    const loginView = document.getElementById("loginView");
+    const helloView = document.getElementById("helloView");
+    const form = document.getElementById("loginForm");
+    const errorBox = document.getElementById("errorBox");
+    const whoami = document.getElementById("whoami");
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault(); // keep the password out of the URL
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+
+      if (USERS[username] !== undefined && USERS[username] === password) {
+        // Success
+        whoami.textContent = username;
+        loginView.classList.remove("active");
+        loginView.hidden = true;
+        helloView.hidden = false;
+        helloView.classList.add("active");
+      } else {
+        // Failure
+        errorBox.classList.add("show");
+        document.getElementById("password").value = "";
+        document.getElementById("password").focus();
+      }
+    });
+
+    document.getElementById("logoutBtn").addEventListener("click", function () {
+      form.reset();
+      errorBox.classList.remove("show");
+      helloView.classList.remove("active");
+      helloView.hidden = true;
+      loginView.hidden = false;
+      loginView.classList.add("active");
+      document.getElementById("username").focus();
+    });
+  </script>
+</body>
+</html>
